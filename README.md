@@ -1,4 +1,4 @@
-# This Day Was Wild
+# History today
 
 A small static web app that shows a random historical event from today and reads it aloud with the browser's built-in text-to-speech.
 
@@ -15,3 +15,8 @@ Historical events are loaded from Wikimedia's English "On this day" endpoint:
 ## Notes
 
 Text-to-speech uses the browser Web Speech API. Browsers that do not support it will still show events, but speech controls will be disabled.
+
+
+```
+python3 -m http.server 8000
+```

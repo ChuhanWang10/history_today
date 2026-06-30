@@ -14,6 +14,7 @@ const state = {
   currentEvent: null,
   isLoading: true,
   isSpeaking: false,
+  activeUtterance: null,
   isSpeechCancelRequested: false,
   ttsSupported: "speechSynthesis" in window && "SpeechSynthesisUtterance" in window
 };
@@ -165,20 +166,34 @@ function speakCurrentEvent() {
   utterance.lang = "en-US";
 
   utterance.onstart = () => {
+    if (state.activeUtterance !== utterance) {
+      return;
+    }
+
     state.isSpeaking = true;
     updateControls();
   };
 
   utterance.onend = () => {
+    if (state.activeUtterance !== utterance) {
+      return;
+    }
+
     state.isSpeaking = false;
+    state.activeUtterance = null;
     state.isSpeechCancelRequested = false;
     updateControls();
   };
 
   utterance.onerror = () => {
+    if (state.activeUtterance !== utterance) {
+      return;
+    }
+
     const wasCancelled = state.isSpeechCancelRequested;
 
     state.isSpeaking = false;
+    state.activeUtterance = null;
     state.isSpeechCancelRequested = false;
 
     if (!wasCancelled) {
@@ -188,6 +203,8 @@ function speakCurrentEvent() {
     updateControls();
   };
 
+  state.activeUtterance = utterance;
+  state.isSpeechCancelRequested = false;
   window.speechSynthesis.cancel();
   window.speechSynthesis.speak(utterance);
 }
@@ -195,6 +212,7 @@ function speakCurrentEvent() {
 function stopSpeech() {
   if (state.ttsSupported) {
     state.isSpeechCancelRequested = true;
+    state.activeUtterance = null;
     window.speechSynthesis.cancel();
     window.setTimeout(() => {
       state.isSpeechCancelRequested = false;
