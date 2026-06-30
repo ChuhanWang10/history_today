@@ -1,11 +1,11 @@
 const API_BASE = "https://en.wikipedia.org/api/rest_v1/feed/onthisday/events";
 
-const speechStyles = {
-  normal: { rate: 1.0, pitch: 1.0, volume: 1.0 },
-  dramatic: { rate: 0.82, pitch: 0.85, volume: 1.0 },
-  breakingNews: { rate: 1.12, pitch: 1.05, volume: 1.0 },
-  bedtimeStory: { rate: 0.72, pitch: 0.9, volume: 0.85 },
-  movieTrailer: { rate: 0.78, pitch: 0.75, volume: 1.0 }
+const browserSpeechStyles = {
+  Normal: { rate: 1.0, pitch: 1.0, volume: 1.0 },
+  Dramatic: { rate: 0.82, pitch: 0.85, volume: 1.0 },
+  "Breaking News": { rate: 1.12, pitch: 1.05, volume: 1.0 },
+  "Bedtime Story": { rate: 0.72, pitch: 0.9, volume: 0.85 },
+  "Movie Trailer": { rate: 0.78, pitch: 0.75, volume: 1.0 }
 };
 
 const state = {
@@ -13,10 +13,14 @@ const state = {
   currentIndex: -1,
   currentEvent: null,
   isLoading: true,
+  isGeneratingAudio: false,
   isSpeaking: false,
+  currentAudio: null,
+  currentAudioUrl: null,
+  ttsRequestId: 0,
   activeUtterance: null,
   isSpeechCancelRequested: false,
-  ttsSupported: "speechSynthesis" in window && "SpeechSynthesisUtterance" in window
+  browserTtsSupported: "speechSynthesis" in window && "SpeechSynthesisUtterance" in window
 };
 
 const elements = {
@@ -30,7 +34,8 @@ const elements = {
   styleSelect: document.querySelector("#speech-style"),
   nextButton: document.querySelector("#next-button"),
   speakButton: document.querySelector("#speak-button"),
-  stopButton: document.querySelector("#stop-button")
+  stopButton: document.querySelector("#stop-button"),
+  fallbackButton: document.querySelector("#fallback-button")
 };
 
 document.addEventListener("DOMContentLoaded", init);
@@ -43,11 +48,8 @@ function init() {
   elements.nextButton.addEventListener("click", showNextEvent);
   elements.speakButton.addEventListener("click", speakCurrentEvent);
   elements.stopButton.addEventListener("click", stopSpeech);
+  elements.fallbackButton.addEventListener("click", speakWithBrowserVoice);
   window.addEventListener("beforeunload", stopSpeech);
-
-  if (!state.ttsSupported) {
-    elements.speechSupportMessage.hidden = false;
-  }
 
   updateControls();
   loadEvents(apiDate);
@@ -116,6 +118,7 @@ function showRandomEvent() {
 
 function showNextEvent() {
   stopSpeech();
+  hideFallbackOption();
   showRandomEvent();
 }
 
@@ -149,16 +152,118 @@ function renderEvent(event) {
   updateControls();
 }
 
-function speakCurrentEvent() {
-  if (!state.ttsSupported || !state.currentEvent || state.isLoading) {
+async function speakCurrentEvent() {
+  if (!state.currentEvent || state.isLoading || state.isGeneratingAudio) {
     return;
   }
 
-  const selectedStyle = speechStyles[elements.styleSelect.value] || speechStyles.normal;
-  const year = state.currentEvent.year ?? "an unknown year";
-  const text = state.currentEvent.text || "no event text is available";
-  const speechText = `On this day in ${year}, ${text}`;
-  const utterance = new SpeechSynthesisUtterance(speechText);
+  stopSpeech();
+  hideFallbackOption();
+
+  const requestId = state.ttsRequestId + 1;
+  state.ttsRequestId = requestId;
+  state.isGeneratingAudio = true;
+  setStatus("Generating audio...", "");
+  updateControls();
+
+  try {
+    const response = await fetch("/api/tts", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        text: buildSpeechText(),
+        style: elements.styleSelect.value
+      })
+    });
+
+    if (requestId !== state.ttsRequestId) {
+      return;
+    }
+
+    if (!response.ok) {
+      throw new Error(await getTtsErrorMessage(response));
+    }
+
+    const audioBlob = await response.blob();
+
+    if (requestId !== state.ttsRequestId) {
+      return;
+    }
+
+    const audioUrl = URL.createObjectURL(audioBlob);
+    const audio = new Audio(audioUrl);
+
+    state.currentAudio = audio;
+    state.currentAudioUrl = audioUrl;
+
+    audio.onended = () => {
+      if (state.currentAudio !== audio) {
+        return;
+      }
+
+      clearCurrentAudio(false);
+      state.isSpeaking = false;
+      setStatus("", "");
+      updateControls();
+    };
+
+    audio.onerror = () => {
+      if (state.currentAudio !== audio) {
+        return;
+      }
+
+      clearCurrentAudio(false);
+      state.isSpeaking = false;
+      setStatus("Audio playback failed. Please try again.", "error");
+      showFallbackOption();
+      updateControls();
+    };
+
+    state.isGeneratingAudio = false;
+    updateControls();
+
+    await audio.play();
+
+    if (requestId === state.ttsRequestId && state.currentAudio === audio) {
+      state.isSpeaking = true;
+      setStatus("", "");
+      updateControls();
+    }
+  } catch (error) {
+    if (requestId !== state.ttsRequestId) {
+      return;
+    }
+
+    clearCurrentAudio(true);
+    state.isGeneratingAudio = false;
+    state.isSpeaking = false;
+    setStatus(error.message || "Could not generate audio. Please try again.", "error");
+    showFallbackOption();
+    updateControls();
+  }
+}
+
+async function getTtsErrorMessage(response) {
+  try {
+    const data = await response.json();
+    return data.error || "Could not generate audio. Please try again.";
+  } catch (error) {
+    return "Could not generate audio. Please try again.";
+  }
+}
+
+function speakWithBrowserVoice() {
+  if (!state.browserTtsSupported || !state.currentEvent || state.isLoading) {
+    return;
+  }
+
+  stopSpeech();
+  hideFallbackOption();
+
+  const selectedStyle = browserSpeechStyles[elements.styleSelect.value] || browserSpeechStyles.Normal;
+  const utterance = new SpeechSynthesisUtterance(buildSpeechText());
 
   utterance.rate = selectedStyle.rate;
   utterance.pitch = selectedStyle.pitch;
@@ -171,6 +276,7 @@ function speakCurrentEvent() {
     }
 
     state.isSpeaking = true;
+    setStatus("", "");
     updateControls();
   };
 
@@ -197,7 +303,7 @@ function speakCurrentEvent() {
     state.isSpeechCancelRequested = false;
 
     if (!wasCancelled) {
-      setStatus("Speech playback stopped unexpectedly.", "error");
+      setStatus("Browser voice playback stopped unexpectedly.", "error");
     }
 
     updateControls();
@@ -209,8 +315,20 @@ function speakCurrentEvent() {
   window.speechSynthesis.speak(utterance);
 }
 
+function buildSpeechText() {
+  const year = state.currentEvent?.year ?? "an unknown year";
+  const text = state.currentEvent?.text || "no event text is available";
+
+  return `On this day in ${year}, ${text}`;
+}
+
 function stopSpeech() {
-  if (state.ttsSupported) {
+  state.ttsRequestId += 1;
+  state.isGeneratingAudio = false;
+  state.isSpeaking = false;
+  clearCurrentAudio(true);
+
+  if (state.browserTtsSupported) {
     state.isSpeechCancelRequested = true;
     state.activeUtterance = null;
     window.speechSynthesis.cancel();
@@ -219,8 +337,42 @@ function stopSpeech() {
     }, 150);
   }
 
-  state.isSpeaking = false;
   updateControls();
+}
+
+function clearCurrentAudio(shouldPause) {
+  if (state.currentAudio) {
+    state.currentAudio.onended = null;
+    state.currentAudio.onerror = null;
+
+    if (shouldPause) {
+      state.currentAudio.pause();
+      state.currentAudio.currentTime = 0;
+    }
+
+    state.currentAudio.src = "";
+  }
+
+  if (state.currentAudioUrl) {
+    URL.revokeObjectURL(state.currentAudioUrl);
+  }
+
+  state.currentAudio = null;
+  state.currentAudioUrl = null;
+}
+
+function showFallbackOption() {
+  if (state.browserTtsSupported) {
+    elements.fallbackButton.hidden = false;
+    return;
+  }
+
+  elements.speechSupportMessage.hidden = false;
+}
+
+function hideFallbackOption() {
+  elements.fallbackButton.hidden = true;
+  elements.speechSupportMessage.hidden = true;
 }
 
 function showEmptyState() {
@@ -255,8 +407,7 @@ function setStatus(message, type) {
 function updateControls() {
   const hasEvent = Boolean(state.currentEvent);
 
-  elements.styleSelect.disabled = !state.ttsSupported;
   elements.nextButton.disabled = state.isLoading || state.events.length === 0;
-  elements.speakButton.disabled = state.isLoading || !hasEvent || state.isSpeaking || !state.ttsSupported;
+  elements.speakButton.disabled = state.isLoading || !hasEvent || state.isGeneratingAudio;
   elements.stopButton.disabled = !state.isSpeaking;
 }

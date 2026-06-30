@@ -3,24 +3,27 @@
   <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>History today</title>
+    <title>History Today</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Codystar:wght@300;400&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="style.css">
     <script src="app.js" defer></script>
   </head>
   <body>
-    <main class="app-shell">
-      <section class="history-card" aria-labelledby="app-title">
-        <header class="app-header">
-          <p class="date-label" id="date-label">Loading today...</p>
-          <h1 id="app-title">History today</h1>
-          <p class="subtitle">Random history, read aloud.</p>
-        </header>
+    <main class="app-shell" aria-labelledby="app-title">
+      <header class="app-header">
+        <span class="sr-only">History Today</span>
+        <h1 id="app-title" class="app-title">History Today</h1>
+      </header>
 
+      <section class="history-card" aria-label="Historical event">
+        <p class="date-label" id="date-label">Loading today...</p>
         <p class="status-message" id="status-message" role="status" aria-live="polite">
           Loading historical events...
         </p>
         <p class="speech-support-message" id="speech-support-message" hidden>
-          Text-to-speech is not supported in this browser.
+          Browser voice fallback is not supported in this browser.
         </p>
 
         <article class="event-panel" aria-labelledby="event-year">
@@ -38,11 +41,11 @@
           <label class="style-field" for="speech-style">
             <span>Style</span>
             <select id="speech-style" name="speech-style">
-              <option value="normal">Normal</option>
-              <option value="dramatic">Dramatic</option>
-              <option value="breakingNews">Breaking News</option>
-              <option value="bedtimeStory">Bedtime Story</option>
-              <option value="movieTrailer">Movie Trailer</option>
+              <option value="Normal">Normal</option>
+              <option value="Dramatic">Dramatic</option>
+              <option value="Breaking News">Breaking News</option>
+              <option value="Bedtime Story">Bedtime Story</option>
+              <option value="Movie Trailer">Movie Trailer</option>
             </select>
           </label>
 
@@ -51,6 +54,10 @@
             <button type="button" id="speak-button">Speak</button>
             <button type="button" id="stop-button">Stop</button>
           </div>
+
+          <button type="button" id="fallback-button" class="fallback-button" hidden>
+            Use browser voice instead
+          </button>
         </form>
       </section>
     </main>
