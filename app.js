@@ -8,6 +8,29 @@ const browserSpeechStyles = {
   "Movie Trailer": { rate: 0.78, pitch: 0.75, volume: 1.0 }
 };
 
+const COLOR_THEMES = [
+  {
+    id: "violet-night",
+    name: "Violet Night"
+  },
+  {
+    id: "magenta-wine",
+    name: "Magenta Wine"
+  },
+  {
+    id: "mint-noir",
+    name: "Mint Noir"
+  },
+  {
+    id: "olive-glow",
+    name: "Olive Glow"
+  }
+];
+
+const THEME_STORAGE_KEY = "thisDayWasWild.colorTheme";
+
+let currentThemeIndex = 3;
+
 const state = {
   events: [],
   currentIndex: -1,
@@ -24,6 +47,7 @@ const state = {
 };
 
 const elements = {
+  themeToggle: document.querySelector("#themeToggle"),
   dateLabel: document.querySelector("#date-label"),
   statusMessage: document.querySelector("#status-message"),
   speechSupportMessage: document.querySelector("#speech-support-message"),
@@ -41,6 +65,8 @@ const elements = {
 document.addEventListener("DOMContentLoaded", init);
 
 function init() {
+  initializeColorTheme();
+
   const today = new Date();
   const { displayDate, apiDate } = formatDates(today);
 
@@ -53,6 +79,51 @@ function init() {
 
   updateControls();
   loadEvents(apiDate);
+}
+
+function getSavedThemeIndex() {
+  let savedThemeId = null;
+
+  try {
+    savedThemeId = window.localStorage.getItem(THEME_STORAGE_KEY);
+  } catch (error) {
+    return 3;
+  }
+
+  const savedIndex = COLOR_THEMES.findIndex((theme) => theme.id === savedThemeId);
+  return savedIndex >= 0 ? savedIndex : 3;
+}
+
+function applyColorTheme(index) {
+  const theme = COLOR_THEMES[index] || COLOR_THEMES[3];
+
+  document.documentElement.dataset.theme = theme.id;
+
+  try {
+    window.localStorage.setItem(THEME_STORAGE_KEY, theme.id);
+  } catch (error) {
+    // Storage can be unavailable in private browsing or restricted environments.
+  }
+
+  if (elements.themeToggle) {
+    elements.themeToggle.textContent = `Color: ${theme.name}`;
+    elements.themeToggle.setAttribute("aria-label", `Switch color theme. Current theme: ${theme.name}`);
+    elements.themeToggle.title = `Current color theme: ${theme.name}`;
+  }
+}
+
+function initializeColorTheme() {
+  currentThemeIndex = getSavedThemeIndex();
+  applyColorTheme(currentThemeIndex);
+
+  if (!elements.themeToggle) {
+    return;
+  }
+
+  elements.themeToggle.addEventListener("click", () => {
+    currentThemeIndex = (currentThemeIndex + 1) % COLOR_THEMES.length;
+    applyColorTheme(currentThemeIndex);
+  });
 }
 
 function formatDates(date) {
