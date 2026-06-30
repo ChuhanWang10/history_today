@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>This Day Was Wild</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="app.js" defer></script>
+  </head>
+  <body>
+    <main class="app-shell">
+      <section class="history-card" aria-labelledby="app-title">
+        <header class="app-header">
+          <p class="date-label" id="date-label">Loading today...</p>
+          <h1 id="app-title">This Day Was Wild</h1>
+          <p class="subtitle">Random history, read aloud.</p>
+        </header>
+
+        <p class="status-message" id="status-message" role="status" aria-live="polite">
+          Loading historical events...
+        </p>
+        <p class="speech-support-message" id="speech-support-message" hidden>
+          Text-to-speech is not supported in this browser.
+        </p>
+
+        <article class="event-panel" aria-labelledby="event-year">
+          <p class="year-label">Year</p>
+          <h2 id="event-year">----</h2>
+          <p id="event-text" class="event-text">
+            Fetching a story from history.
+          </p>
+          <a id="source-link" class="source-link" href="#" target="_blank" rel="noopener noreferrer" hidden>
+            Read on Wikipedia
+          </a>
+        </article>
+
+        <form class="controls" aria-label="Event controls">
+          <label class="style-field" for="speech-style">
+            <span>Style</span>
+            <select id="speech-style" name="speech-style">
+              <option value="normal">Normal</option>
+              <option value="dramatic">Dramatic</option>
+              <option value="breakingNews">Breaking News</option>
+              <option value="bedtimeStory">Bedtime Story</option>
+              <option value="movieTrailer">Movie Trailer</option>
+            </select>
+          </label>
+
+          <div class="button-row">
+            <button type="button" id="next-button">Next Event</button>
+            <button type="button" id="speak-button">Speak</button>
+            <button type="button" id="stop-button">Stop</button>
+          </div>
+        </form>
+      </section>
+    </main>
+
+    <footer class="app-footer">
+      Historical data from Wikipedia.
+    </footer>
+  </body>
+</html>
