@@ -1,4 +1,3 @@
-const path = require("path");
 const express = require("express");
 const dotenv = require("dotenv");
 
@@ -6,14 +5,40 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const OPENAI_SPEECH_URL = "https://api.openai.com/v1/audio/speech";
+const ELEVENLABS_TTS_BASE_URL = "https://api.elevenlabs.io/v1/text-to-speech";
+const DEFAULT_ELEVENLABS_MODEL_ID = "eleven_multilingual_v2";
 
-const STYLE_INSTRUCTIONS = {
-  Normal: "Read in a clear, natural documentary narration voice. Keep the delivery neutral and easy to understand.",
-  Dramatic: "Read slowly with a dramatic, suspenseful tone. Add gravity and tension, but keep the words clear.",
-  "Breaking News": "Read like an urgent breaking news anchor. Use a confident, fast-paced, energetic delivery.",
-  "Bedtime Story": "Read softly and calmly, like a gentle bedtime story narrator. Use a warm and soothing tone.",
-  "Movie Trailer": "Read in a deep, cinematic movie trailer style. Use a slow, powerful, suspenseful delivery."
+const ELEVENLABS_STYLE_SETTINGS = {
+  Normal: {
+    stability: 0.5,
+    similarity_boost: 0.75,
+    style: 0.0,
+    use_speaker_boost: true
+  },
+  Dramatic: {
+    stability: 0.35,
+    similarity_boost: 0.8,
+    style: 0.55,
+    use_speaker_boost: true
+  },
+  "Breaking News": {
+    stability: 0.42,
+    similarity_boost: 0.75,
+    style: 0.35,
+    use_speaker_boost: true
+  },
+  "Bedtime Story": {
+    stability: 0.7,
+    similarity_boost: 0.65,
+    style: 0.2,
+    use_speaker_boost: true
+  },
+  "Movie Trailer": {
+    stability: 0.3,
+    similarity_boost: 0.85,
+    style: 0.75,
+    use_speaker_boost: true
+  }
 };
 
 app.use(express.json({ limit: "20kb" }));
@@ -40,44 +65,66 @@ app.post("/api/tts", async (req, res) => {
     return res.status(400).json({ error: "Text must be 1000 characters or fewer." });
   }
 
-  if (!Object.prototype.hasOwnProperty.call(STYLE_INSTRUCTIONS, style)) {
+  if (!Object.prototype.hasOwnProperty.call(ELEVENLABS_STYLE_SETTINGS, style)) {
     return res.status(400).json({
       error: "Style must be one of: Normal, Dramatic, Breaking News, Bedtime Story, Movie Trailer."
     });
   }
 
-  if (!process.env.OPENAI_API_KEY) {
-    return res.status(500).json({ error: "OpenAI API key is not configured on the server." });
+  const apiKey = process.env.ELEVENLABS_API_KEY?.trim();
+  const voiceId = process.env.ELEVENLABS_VOICE_ID?.trim();
+  const modelId = process.env.ELEVENLABS_MODEL_ID?.trim() || DEFAULT_ELEVENLABS_MODEL_ID;
+
+  if (!apiKey) {
+    return res.status(500).json({ error: "ElevenLabs API key is not configured on the server." });
+  }
+
+  if (!voiceId) {
+    return res.status(500).json({ error: "ElevenLabs voice ID is not configured on the server." });
   }
 
   try {
-    const openAIResponse = await fetch(OPENAI_SPEECH_URL, {
+    const elevenLabsResponse = await fetch(getElevenLabsTtsUrl(voiceId), {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
-        "Content-Type": "application/json"
+        "xi-api-key": apiKey,
+        "Content-Type": "application/json",
+        Accept: "audio/mpeg"
       },
       body: JSON.stringify({
-        model: "gpt-4o-mini-tts",
-        voice: "coral",
-        input: trimmedText,
-        instructions: STYLE_INSTRUCTIONS[style],
-        response_format: "mp3"
+        text: trimmedText,
+        model_id: modelId,
+        voice_settings: ELEVENLABS_STYLE_SETTINGS[style]
       })
     });
 
-    if (!openAIResponse.ok) {
-      const detail = await readOpenAIError(openAIResponse);
-      console.error("OpenAI speech API error", {
-        status: openAIResponse.status,
-        statusText: openAIResponse.statusText,
+    if (!elevenLabsResponse.ok) {
+      const detail = await readElevenLabsError(elevenLabsResponse);
+      console.error("ElevenLabs speech API error", {
+        status: elevenLabsResponse.status,
+        statusText: elevenLabsResponse.statusText,
+        contentType: elevenLabsResponse.headers.get("content-type") || "",
         detail
       });
 
       return res.status(502).json({ error: "Could not generate audio right now. Please try again later." });
     }
 
-    const audioBuffer = Buffer.from(await openAIResponse.arrayBuffer());
+    const contentType = elevenLabsResponse.headers.get("content-type") || "";
+
+    if (!contentType.includes("audio/") && !contentType.includes("application/octet-stream")) {
+      const detail = await readElevenLabsError(elevenLabsResponse);
+      console.error("Unexpected ElevenLabs response type", {
+        status: elevenLabsResponse.status,
+        statusText: elevenLabsResponse.statusText,
+        contentType,
+        detail
+      });
+
+      return res.status(502).json({ error: "Could not generate audio right now. Please try again later." });
+    }
+
+    const audioBuffer = Buffer.from(await elevenLabsResponse.arrayBuffer());
 
     res.status(200);
     res.setHeader("Content-Type", "audio/mpeg");
@@ -90,19 +137,24 @@ app.post("/api/tts", async (req, res) => {
   }
 });
 
-async function readOpenAIError(response) {
+function getElevenLabsTtsUrl(voiceId) {
+  const encodedVoiceId = encodeURIComponent(voiceId);
+  return `${ELEVENLABS_TTS_BASE_URL}/${encodedVoiceId}?output_format=mp3_44100_128`;
+}
+
+async function readElevenLabsError(response) {
   try {
     const contentType = response.headers.get("content-type") || "";
 
     if (contentType.includes("application/json")) {
       const body = await response.json();
-      return JSON.stringify({ error: body.error?.message || body.error || body });
+      return JSON.stringify({ error: body.error?.message || body.error || body }).slice(0, 500);
     }
 
     const body = await response.text();
     return body.slice(0, 500);
   } catch (error) {
-    return "Unable to read OpenAI error body.";
+    return "Unable to read ElevenLabs error body.";
   }
 }
 
